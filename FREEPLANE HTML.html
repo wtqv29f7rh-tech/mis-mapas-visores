@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visor Freeplane - iPhone</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: #2c3e50;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .toolbar {
+            background: #34495e;
+            color: white;
+            padding: 15px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            border-bottom: 2px solid #e74c3c;
+        }
+        button {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button.primary { background: #e74c3c; }
+        .file-info {
+            flex: 1;
+            font-size: 12px;
+            color: #bdc3c7;
+            word-break: break-all;
+        }
+        .stats {
+            background: #ecf0f1;
+            padding: 8px 15px;
+            font-size: 12px;
+            color: #7f8c8d;
+        }
+        .map-viewer {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+            background: #f5f5f5;
+        }
+        .tree { list-style: none; }
+        .tree-node { margin: 2px 0; list-style: none; }
+        .node-row {
+            display: flex;
+            align-items: flex-start;
+            padding: 8px 10px;
+            background: white;
+            border-radius: 8px;
+            margin: 2px 0;
+            border-left: 3px solid #3498db;
+        }
+        .toggle-btn {
+            width: 24px;
+            height: 24px;
+            background: #3498db;
+            color: white;
+            border-radius: 4px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 8px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .toggle-btn.empty { background: #bdc3c7; }
+        .node-text { color: #2c3e50; font-size: 14px; flex: 1; word-break: break-word; }
+        .node-text.has-link { color: #3498db; text-decoration: underline; cursor: pointer; }
+        .note-indicator {
+            width: 22px;
+            height: 22px;
+            background: #f39c12;
+            color: white;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            margin-left: 8px;
+            cursor: pointer;
+        }
+        .children { margin-left: 28px; padding-left: 10px; border-left: 2px dotted #bdc3c7; }
+        .children.collapsed { display: none; }
+        .note-preview {
+            margin: 8px 0 0 28px;
+            padding: 10px;
+            background: #fff9e6;
+            border-left: 3px solid #f39c12;
+            border-radius: 6px;
+            font-size: 12px;
+            display: none;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .note-preview.show { display: block; }
+        .loading { text-align: center; padding: 50px; color: #7f8c8d; }
+        .error {
+            background: #fee;
+            border-left: 4px solid #e74c3c;
+            padding: 15px;
+            margin: 15px;
+            border-radius: 8px;
+            color: #c0392b;
+        }
+    </style>
+</head>
+<body>
+    <div class="toolbar">
+        <button class="primary" id="openBtn">📂 Abrir archivo .mm</button>
+        <button onclick="expandAll()">📖 Expandir todo</button>
+        <button onclick="collapseAll()">📕 Colapsar todo</button>
+        <span class="file-info" id="fileInfo">Sin archivo</span>
+    </div>
+    <div class="stats" id="stats">💡 Toca "Abrir archivo .mm" y selecciona tu mapa</div>
+    <div class="map-viewer" id="viewer">
+        <div class="loading">📄 Toca el botón para seleccionar un archivo .mm</div>
+    </div>
+
+    <script>
+        // Variables globales
+        let rootNode = null;
+        let allNodes = new Map();
+
+        // Configurar el selector de archivos
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = '.mm';
+        fileInput.style.display = 'none';
+        document.body.appendChild(fileInput);
+
+        // Cuando se selecciona un archivo
+        fileInput.onchange = (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                cargarArchivo(file);
+            }
+            fileInput.value = '';
+        };
+
+        // Botón para abrir selector
+        document.getElementById('openBtn').onclick = () => {
+            fileInput.click();
+        };
+
+        // Cargar y parsear el archivo .mm
+        function cargarArchivo(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                let xmlString = e.target.result;
+                xmlString = limpiarXml(xmlString);
+                procesarXml(xmlString, file.name);
+            };
+            reader.readAsText(file);
+        }
+
+        function limpiarXml(str) {
+            const entidades = {
+                '&nbsp;': '&#160;',
+                '&lt;': '&#60;',
+                '&gt;': '&#62;',
+                '&quot;': '&#34;',
+                '&apos;': '&#39;',
+                '&copy;': '&#169;',
+                '&reg;': '&#174;',
+                '&euro;': '&#8364;'
+            };
+            for (const [ent, rep] of Object.entries(entidades)) {
+                str = str.split(ent).join(rep);
+            }
+            return str;
+        }
+
+        function procesarXml(xmlString, nombreArchivo) {
+            try {
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(xmlString, "text/xml");
+                
+                const error = xmlDoc.querySelector('parsererror');
+                if (error) throw new Error(error.textContent.substring(0, 200));
+                
+                const raiz = xmlDoc.querySelector('map > node');
+                if (!raiz) throw new Error('No se encontró el nodo raíz');
+                
+                allNodes.clear();
+                rootNode = parsearNodo(raiz, null, 0);
+                
+                document.getElementById('fileInfo').innerHTML = `📁 ${nombreArchivo}`;
+                document.getElementById('stats').innerHTML = `✅ Cargado: ${allNodes.size} nodos | "${(rootNode.text || '').substring(0, 40)}"`;
+                renderizarMapa();
+                
+            } catch (error) {
+                document.getElementById('viewer').innerHTML = `<div class="error">❌ ${error.message}</div>`;
+                document.getElementById('stats').innerHTML = '❌ Error al cargar';
+            }
+        }
+
+        function parsearNodo(xmlNode, padreId, nivel) {
+            const id = xmlNode.getAttribute('ID') || `id_${Math.random()}`;
+            const texto = xmlNode.getAttribute('TEXT') || 'Sin título';
+            const enlace = xmlNode.getAttribute('LINK') || null;
+            const plegado = xmlNode.getAttribute('FOLDED') === 'true';
+            
+            let nota = null;
+            const rich = xmlNode.querySelector(':scope > richcontent[TYPE="NOTE"]');
+            if (rich) {
+                const htmlContent = rich.querySelector('html');
+                if (htmlContent) nota = htmlContent.innerHTML;
+            }
+            
+            const nodo = {
+                id: id,
+                text: texto,
+                link: enlace,
+                folded: plegado,
+                note: nota,
+                parentId: padreId,
+                level: nivel,
+                children: []
+            };
+            
+            allNodes.set(id, nodo);
+            
+            const hijos = xmlNode.querySelectorAll(':scope > node');
+            hijos.forEach(hijo => {
+                nodo.children.push(parsearNodo(hijo, id, nivel + 1));
+            });
+            
+            return nodo;
+        }
+
+        function renderizarMapa() {
+            if (!rootNode) return;
+            document.getElementById('viewer').innerHTML = `<ul class="tree">${renderizarNodo(rootNode)}</ul>`;
+            conectarEventos();
+        }
+
+        function renderizarNodo(nodo) {
+            const tieneHijos = nodo.children.length > 0;
+            const tieneNota = nodo.note !== null;
+            const tieneEnlace = nodo.link !== null;
+            
+            const claseToggle = tieneHijos ? 'toggle-btn' : 'toggle-btn empty';
+            const iconoToggle = tieneHijos ? '▼' : '•';
+            
+            let claseTexto = 'node-text';
+            if (tieneEnlace) claseTexto += ' has-link';
+            
+            let hijosHtml = '';
+            if (tieneHijos) {
+                const clasePlegado = nodo.folded ? 'collapsed' : '';
+                hijosHtml = `<ul class="children ${clasePlegado}">`;
+                nodo.children.forEach(hijo => {
+                    hijosHtml += renderizarNodo(hijo);
+                });
+                hijosHtml += `</ul>`;
+            }
+            
+            return `
+                <li class="tree-node" data-id="${nodo.id}">
+                    <div class="node-row">
+                        <span class="${claseToggle}" data-toggle="${nodo.id}">${iconoToggle}</span>
+                        <span class="${claseTexto}" data-link="${nodo.link || ''}">${escapeHtml(nodo.text)}</span>
+                        ${tieneNota ? `<span class="note-indicator" data-nota="${nodo.id}">📝</span>` : ''}
+                    </div>
+                    ${tieneNota ? `<div class="note-preview" data-nota-preview="${nodo.id}">${nodo.note || ''}</div>` : ''}
+                    ${hijosHtml}
+                </li>
+            `;
+        }
+
+        function conectarEventos() {
+            // Toggle de nodos
+            document.querySelectorAll('[data-toggle]').forEach(el => {
+                el.onclick = (e) => {
+                    e.stopPropagation();
+                    const id = el.getAttribute('data-toggle');
+                    const hijos = document.querySelector(`li[data-id="${id}"] > .children`);
+                    if (hijos) {
+                        hijos.classList.toggle('collapsed');
+                        el.textContent = hijos.classList.contains('collapsed') ? '▶' : '▼';
+                    }
+                };
+            });
+            
+            // Mostrar/ocultar notas
+            document.querySelectorAll('[data-nota]').forEach(el => {
+                el.onclick = (e) => {
+                    e.stopPropagation();
+                    const id = el.getAttribute('data-nota');
+                    const nota = document.querySelector(`[data-nota-preview="${id}"]`);
+                    if (nota) nota.classList.toggle('show');
+                };
+            });
+            
+            // Enlaces
+            document.querySelectorAll('[data-link]').forEach(el => {
+                if (el.getAttribute('data-link')) {
+                    el.onclick = (e) => {
+                        e.stopPropagation();
+                        const link = el.getAttribute('data-link');
+                        if (link && link.startsWith('#')) {
+                            const destino = document.querySelector(`li[data-id="${link.substring(1)}"]`);
+                            if (destino) destino.scrollIntoView({ behavior: 'smooth' });
+                        } else if (link && !link.startsWith('#')) {
+                            window.open(link, '_blank');
+                        }
+                    };
+                }
+            });
+        }
+
+        function expandAll() {
+            document.querySelectorAll('.children').forEach(el => el.classList.remove('collapsed'));
+            document.querySelectorAll('[data-toggle]').forEach(el => {
+                if (el.textContent === '▶') el.textContent = '▼';
+            });
+        }
+
+        function collapseAll() {
+            document.querySelectorAll('.children').forEach(el => {
+                if (el.parentElement?.getAttribute('data-level') !== '0') {
+                    el.classList.add('collapsed');
+                }
+            });
+            document.querySelectorAll('[data-toggle]').forEach(el => {
+                const id = el.getAttribute('data-toggle');
+                const nodo = document.querySelector(`li[data-id="${id}"]`);
+                if (nodo && nodo.getAttribute('data-level') !== '0') {
+                    if (el.textContent === '▼') el.textContent = '▶';
+                }
+            });
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+    </script>
+</body>
+</html>
