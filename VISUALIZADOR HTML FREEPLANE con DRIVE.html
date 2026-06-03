@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>Visualizador de Mapas Freeplane - Drive Edition</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #2c3e50;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .toolbar {
+            background: #34495e;
+            color: white;
+            padding: 12px 16px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+            border-bottom: 2px solid #e74c3c;
+        }
+
+        .toolbar button {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 8px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+
+        .toolbar button:hover {
+            background: #2980b9;
+        }
+
+        .toolbar button.primary {
+            background: #e74c3c;
+        }
+
+        .toolbar button.primary:hover {
+            background: #c0392b;
+        }
+
+        .toolbar button.drive {
+            background: #0F9D58;
+        }
+
+        .toolbar button.drive:hover {
+            background: #0b7e48;
+        }
+
+        .file-info {
+            flex: 1;
+            font-size: 11px;
+            color: #bdc3c7;
+            font-family: monospace;
+            word-break: break-all;
+        }
+
+        .search-box {
+            padding: 6px 10px;
+            border: none;
+            border-radius: 6px;
+            width: 200px;
+            font-size: 13px;
+        }
+
+        .stats {
+            background: #ecf0f1;
+            padding: 6px 16px;
+            font-size: 11px;
+            color: #7f8c8d;
+            border-bottom: 1px solid #bdc3c7;
+        }
+
+        .map-viewer {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            background: #f5f5f5;
+        }
+
+        .tree {
+            list-style: none;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        .tree-node {
+            margin: 2px 0;
+            list-style: none;
+        }
+
+        .node-row {
+            display: flex;
+            align-items: flex-start;
+            padding: 5px 8px;
+            margin: 2px 0;
+            background: white;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border-left: 3px solid #3498db;
+        }
+
+        .node-row:hover {
+            background: #e8f4fd;
+            transform: translateX(3px);
+        }
+
+        .toggle-btn {
+            width: 20px;
+            height: 20px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: #3498db;
+            color: white;
+            border-radius: 4px;
+            font-size: 11px;
+            margin-right: 8px;
+            flex-shrink: 0;
+            cursor: pointer;
+        }
+
+        .toggle-btn.empty {
+            background: #bdc3c7;
+            cursor: default;
+        }
+
+        .node-text {
+            color: #2c3e50;
+            font-size: 13px;
+            flex: 1;
+            word-break: break-word;
+        }
+
+        .node-text.has-link {
+            color: #3498db;
+            text-decoration: underline;
+            cursor: pointer;
+        }
+
+        .node-text.has-link:hover {
+            color: #2980b9;
+        }
+
+        .note-indicator {
+            width: 18px;
+            height: 18px;
+            background: #f39c12;
+            color: white;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            margin-left: 6px;
+            flex-shrink: 0;
+            cursor: pointer;
+        }
+
+        .link-indicator {
+            width: 18px;
+            height: 18px;
+            background: #e74c3c;
+            color: white;
+            border-radius: 4px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            margin-left: 4px;
+            flex-shrink: 0;
+            cursor: pointer;
+            text-decoration: none;
+        }
+
+        .children {
+            margin-left: 24px;
+            padding-left: 8px;
+            border-left: 2px dotted #bdc3c7;
+            list-style: none;
+        }
+
+        .children.collapsed {
+            display: none;
+        }
+
+        .note-preview {
+            margin: 6px 0 0 28px;
+            padding: 8px;
+            background: #fff9e6;
+            border-left: 3px solid #f39c12;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #555;
+            display: none;
+            max-height: 250px;
+            overflow-y: auto;
+        }
+
+        .note-preview.show {
+            display: block;
+        }
+
+        .note-preview a {
+            color: #3498db;
+            text-decoration: none;
+        }
+
+        .note-preview a:hover {
+            text-decoration: underline;
+        }
+
+        .loading, .empty {
+            text-align: center;
+            padding: 40px;
+            color: #7f8c8d;
+        }
+
+        .error {
+            background: #fee;
+            border-left: 4px solid #e74c3c;
+            padding: 12px;
+            margin: 16px;
+            border-radius: 8px;
+            color: #c0392b;
+            white-space: pre-wrap;
+            font-size: 12px;
+        }
+
+        .drive-url-input {
+            display: flex;
+            gap: 8px;
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .drive-url-input input {
+            flex: 1;
+            padding: 6px 10px;
+            border: none;
+            border-radius: 6px;
+            font-size: 12px;
+            background: #ecf0f1;
+        }
+
+        @media (max-width: 700px) {
+            .toolbar {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .drive-url-input {
+                width: 100%;
+            }
+            .search-box {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="toolbar">
+        <button class="primary" onclick="document.getElementById('fileInput').click()">📂 Archivo local</button>
+        <button class="drive" onclick="loadFromDriveUrl()">☁️ Cargar desde Drive</button>
+        <div class="drive-url-input">
+            <input type="text" id="driveUrl" placeholder="Pega aquí el enlace compartido de Drive...">
+        </div>
+        <button onclick="expandAll()">📖 Expandir</button>
+        <button onclick="collapseAll()">📕 Colapsar</button>
+        <input type="text" id="searchBox" class="search-box" placeholder="🔍 Buscar..." onkeyup="searchNodes(this.value)">
+        <span class="file-info" id="fileInfo">Sin archivo cargado</span>
+        <input type="file" id="fileInput" accept=".mm,.xml" style="display:none" onchange="loadLocalFile(this.files[0])">
+    </div>
+    <div class="stats" id="stats">
+        💡 Carga un archivo .mm (local o desde Drive compartido)
+    </div>
+    <div class="map-viewer" id="viewer">
+        <div class="loading">
+            📄 Selecciona un archivo .mm<br>
+            <small>Archivos locales o desde Google Drive usando enlace compartido</small>
+        </div>
+    </div>
+
+    <script>
+        let rootNode = null;
+        let allNodes = new Map();
+        let currentNodeId = 1;
+
+        // ============ CARGA LOCAL ============
+        function loadLocalFile(file) {
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                let xmlString = e.target.result;
+                xmlString = sanitizeXml(xmlString);
+                parseMindMap(xmlString);
+            };
+            reader.readAsText(file);
+            
+            document.getElementById('fileInfo').innerHTML = `📁 ${file.name}`;
+        }
+
+        // ============ CARGA DESDE DRIVE ============
+        function loadFromDriveUrl() {
+            const urlInput = document.getElementById('driveUrl');
+            let url = urlInput.value.trim();
+            
+            if (!url) {
+                alert('Pega el enlace de Drive del archivo .mm');
+                return;
+            }
+            
+            document.getElementById('stats').innerHTML = '⏳ Cargando desde Drive...';
+            
+            // Convertir URL de Drive a URL de descarga directa
+            let fileId = extractFileIdFromDriveUrl(url);
+            
+            if (!fileId) {
+                // Intentar con otro formato
+                fileId = extractFileIdFromDriveUrlAlt(url);
+            }
+            
+            if (!fileId) {
+                document.getElementById('stats').innerHTML = '❌ No se pudo extraer el ID del archivo de Drive';
+                alert('No se pudo extraer el ID del archivo. Asegúrate de que el enlace sea de un archivo .mm compartido.\n\nEjemplo: https://drive.google.com/file/d/XXXXXXXXXXX/view');
+                return;
+            }
+            
+            // Usar la API de descarga directa de Google Drive
+            // Nota: El archivo debe estar compartido como "Cualquier persona con el enlace"
+            const downloadUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=`;
+            
+            // Método alternativo: descarga directa (funciona con archivos públicos)
+            const directUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+            
+            fetch(directUrl)
+                .then(response => {
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    return response.text();
+                })
+                .then(xmlString => {
+                    const sanitized = sanitizeXml(xmlString);
+                    parseMindMap(sanitized);
+                    document.getElementById('fileInfo').innerHTML = `☁️ ${fileId.substring(0, 20)}...mm`;
+                })
+                .catch(error => {
+                    console.error(error);
+                    document.getElementById('stats').innerHTML = '❌ Error al cargar desde Drive';
+                    alert('Error al cargar.\n\nAsegúrate de que:\n1. El archivo esté compartido como "Cualquier persona con el enlace"\n2. El enlace sea correcto\n\nSi el archivo es privado, necesitarás usar la API de Google (más complejo).');
+                });
+        }
+
+        function extractFileIdFromDriveUrl(url) {
+            // Formato: https://drive.google.com/file/d/FILE_ID/view
+            const match = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+            return match ? match[1] : null;
+        }
+        
+        function extractFileIdFromDriveUrlAlt(url) {
+            // Formato alternativo: https://drive.google.com/open?id=FILE_ID
+            const match = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+            return match ? match[1] : null;
+        }
+
+        // ============ SANITIZACIÓN ============
+        function sanitizeXml(str) {
+            const entities = {
+                '&nbsp;': '&#160;',
+                '&amp;': '&amp;',
+                '&lt;': '&#60;',
+                '&gt;': '&#62;',
+                '&quot;': '&#34;',
+                '&apos;': '&#39;',
+                '&copy;': '&#169;',
+                '&reg;': '&#174;',
+                '&euro;': '&#8364;',
+                '&pound;': '&#163;',
+                '&yen;': '&#165;',
+                '&sect;': '&#167;',
+                '&deg;': '&#176;',
+                '&plusmn;': '&#177;',
+                '&para;': '&#182;',
+                '&middot;': '&#183;',
+                '&frac12;': '&#189;',
+                '&frac14;': '&#188;',
+                '&frac34;': '&#190;',
+                '&mdash;': '&#8212;',
+                '&ndash;': '&#8211;'
+            };
+            
+            let result = str;
+            for (const [entity, replacement] of Object.entries(entities)) {
+                const regex = new RegExp(entity.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+                result = result.replace(regex, replacement);
+            }
+            return result;
+        }
+
+        // ============ PARSER ============
+        function parseMindMap(xmlString) {
+            try {
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(xmlString, "text/xml");
+                
+                const parseError = xmlDoc.querySelector('parsererror');
+                if (parseError) {
+                    let errorMsg = parseError.textContent || 'Error desconocido';
+                    errorMsg = errorMsg.substring(0, 200);
+                    throw new Error(errorMsg);
+                }
+                
+                const rootXml = xmlDoc.querySelector('map > node');
+                if (!rootXml) throw new Error('No se encontró el nodo raíz');
+                
+                allNodes.clear();
+                rootNode = parseNode(rootXml, null, 0);
+                
+                document.getElementById('stats').innerHTML = `✅ Cargado: ${allNodes.size} nodos | Raíz: "${(rootNode.text || '').substring(0, 50)}"`;
+                renderMap();
+                
+            } catch (error) {
+                console.error(error);
+                document.getElementById('viewer').innerHTML = `<div class="error">❌ Error XML: ${escapeHtml(error.message)}</div>`;
+                document.getElementById('stats').innerHTML = '❌ Error al cargar';
+            }
+        }
+
+        function parseNode(xmlNode, parentId, level) {
+            const id = xmlNode.getAttribute('ID') || `auto_${currentNodeId++}`;
+            const text = xmlNode.getAttribute('TEXT') || 'Sin título';
+            const link = xmlNode.getAttribute('LINK') || null;
+            const folded = xmlNode.getAttribute('FOLDED') === 'true';
+            
+            let noteHtml = null;
+            const richContent = xmlNode.querySelector(':scope > richcontent[TYPE="NOTE"]');
+            if (richContent) {
+                const htmlContent = richContent.querySelector('html');
+                if (htmlContent) {
+                    noteHtml = htmlContent.innerHTML;
+                    noteHtml = sanitizeXml(noteHtml);
+                }
+            }
+            
+            const nodeData = {
+                id: id,
+                text: text,
+                link: link,
+                folded: folded,
+                note: noteHtml,
+                parentId: parentId,
+                level: level,
+                children: []
+            };
+            
+            allNodes.set(id, nodeData);
+            
+            const childNodes = xmlNode.querySelectorAll(':scope > node');
+            childNodes.forEach(child => {
+                const childData = parseNode(child, id, level + 1);
+                nodeData.children.push(childData);
+            });
+            
+            return nodeData;
+        }
+
+        // ============ RENDER ============
+        function renderMap() {
+            if (!rootNode) return;
+            const viewer = document.getElementById('viewer');
+            viewer.innerHTML = `<ul class="tree">${renderNode(rootNode)}</ul>`;
+            attachEvents();
+        }
+
+        function renderNode(node) {
+            const hasChildren = node.children && node.children.length > 0;
+            const hasNote = node.note !== null;
+            const hasLink = node.link !== null;
+            
+            const toggleClass = hasChildren ? 'toggle-btn' : 'toggle-btn empty';
+            const toggleIcon = hasChildren ? '▼' : '•';
+            
+            let textClass = 'node-text';
+            if (hasLink) textClass += ' has-link';
+            
+            let childrenHtml = '';
+            if (hasChildren) {
+                const collapsedClass = node.folded ? 'collapsed' : '';
+                childrenHtml = `<ul class="children ${collapsedClass}" data-parent="${node.id}">`;
+                node.children.forEach(child => {
+                    childrenHtml += renderNode(child);
+                });
+                childrenHtml += `</ul>`;
+            }
+            
+            return `
+                <li class="tree-node" data-id="${node.id}" data-level="${node.level}">
+                    <div class="node-row">
+                        <span class="${toggleClass}" data-action="toggle" data-id="${node.id}">${toggleIcon}</span>
+                        <span class="${textClass}" data-action="${hasLink ? 'link' : 'none'}" data-link="${escapeHtml(node.link || '')}">${escapeHtml(node.text)}</span>
+                        ${hasNote ? `<span class="note-indicator" data-action="note" data-id="${node.id}">📝</span>` : ''}
+                        ${hasLink && node.link && !node.link.startsWith('#') ? `<a href="${escapeHtml(node.link)}" target="_blank" class="link-indicator" onclick="event.stopPropagation()">🔗</a>` : ''}
+                        ${hasLink && node.link && node.link.startsWith('#') ? `<span class="link-indicator" data-action="internal-link" data-link="${escapeHtml(node.link)}">🔗</span>` : ''}
+                    </div>
+                    ${hasNote ? `<div class="note-preview" data-note="${node.id}">${node.note || ''}</div>` : ''}
+                    ${childrenHtml}
+                </li>
+            `;
+        }
+
+        // ============ EVENTOS ============
+        function attachEvents() {
+            document.querySelectorAll('[data-action="toggle"]').forEach(el => {
+                el.onclick = (e) => {
+                    e.stopPropagation();
+                    const nodeId = el.getAttribute('data-id');
+                    const childrenUl = document.querySelector(`li[data-id="${nodeId}"] > .children`);
+                    if (childrenUl) {
+                        childrenUl.classList.toggle('collapsed');
+                        el.textContent = childrenUl.classList.contains('collapsed') ? '▶' : '▼';
+                    }
+                };
+            });
+            
+            document.querySelectorAll('[data-action="note"]').forEach(el => {
+                el.onclick = (e) => {
+                    e.stopPropagation();
+                    const nodeId = el.getAttribute('data-id');
+                    const noteDiv = document.querySelector(`.note-preview[data-note="${nodeId}"]`);
+                    if (noteDiv) noteDiv.classList.toggle('show');
+                };
+            });
+            
+            document.querySelectorAll('[data-action="internal-link"]').forEach(el => {
+                el.onclick = (e) => {
+                    e.stopPropagation();
+                    const link = el.getAttribute('data-link');
+                    if (link && link.startsWith('#')) {
+                        const targetId = link.substring(1);
+                        const targetNode = document.querySelector(`li[data-id="${targetId}"]`);
+                        if (targetNode) {
+                            targetNode.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            targetNode.style.backgroundColor = '#ffffcc';
+                            setTimeout(() => {
+                                targetNode.style.backgroundColor = '';
+                            }, 2000);
+                            expandParents(targetId);
+                        }
+                    }
+                };
+            });
+            
+            document.querySelectorAll('[data-action="link"]').forEach(el => {
+                el.onclick = (e) => {
+                    e.stopPropagation();
+                    const link = el.getAttribute('data-link');
+                    if (link) {
+                        if (link.startsWith('#')) {
+                            const targetId = link.substring(1);
+                            const targetNode = document.querySelector(`li[data-id="${targetId}"]`);
+                            if (targetNode) {
+                                targetNode.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                expandParents(targetId);
+                            }
+                        } else {
+                            window.open(link, '_blank');
+                        }
+                    }
+                };
+            });
+        }
+
+        function expandParents(nodeId) {
+            let current = document.querySelector(`li[data-id="${nodeId}"]`);
+            while (current) {
+                const parent = current.parentElement?.closest('.tree-node');
+                if (parent) {
+                    const childrenUl = parent.querySelector(':scope > .children');
+                    if (childrenUl && childrenUl.classList.contains('collapsed')) {
+                        childrenUl.classList.remove('collapsed');
+                        const toggleBtn = parent.querySelector('[data-action="toggle"]');
+                        if (toggleBtn) toggleBtn.textContent = '▼';
+                    }
+                    current = parent;
+                } else {
+                    break;
+                }
+            }
+        }
+
+        function expandAll() {
+            document.querySelectorAll('.children').forEach(el => {
+                el.classList.remove('collapsed');
+            });
+            document.querySelectorAll('[data-action="toggle"]').forEach(el => {
+                if (el.textContent === '▶') el.textContent = '▼';
+            });
+        }
+
+        function collapseAll() {
+            document.querySelectorAll('.children').forEach(el => {
+                if (el.parentElement?.getAttribute('data-level') !== '0') {
+                    el.classList.add('collapsed');
+                }
+            });
+            document.querySelectorAll('[data-action="toggle"]').forEach(el => {
+                const parentId = el.getAttribute('data-id');
+                const parentNode = document.querySelector(`li[data-id="${parentId}"]`);
+                if (parentNode && parentNode.getAttribute('data-level') !== '0') {
+                    if (el.textContent === '▼') el.textContent = '▶';
+                }
+            });
+        }
+
+        function searchNodes(query) {
+            if (!query.trim()) {
+                document.querySelectorAll('.tree-node').forEach(el => {
+                    el.style.display = '';
+                });
+                return;
+            }
+            
+            const lowerQuery = query.toLowerCase();
+            document.querySelectorAll('.tree-node').forEach(el => {
+                const text = el.querySelector('.node-text')?.textContent.toLowerCase() || '';
+                if (text.includes(lowerQuery)) {
+                    el.style.display = '';
+                    expandParents(el.getAttribute('data-id'));
+                } else {
+                    el.style.display = 'none';
+                }
+            });
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+    </script>
+</body>
+</html>
